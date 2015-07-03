@@ -134,3 +134,65 @@ func TestShutdownFinishGetsCalled(t *testing.T) {
 		t.Error("Expected 1 ShutdownFinish, got ", len(c))
 	}
 }
+
+// Graceful shutdown will listen for posix SIGINT and SIGTERM signals.
+// When they are received it will run all callbacks in separate go routines.
+// When callbacks return, the application will exit with os.Exit(0)
+func Example_posixsignal() {
+	// initialize gracefulshutdown with ping time
+	gs := gracefulshutdown.New(time.Second*15)
+
+	// add posix shutdown manager
+	gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
+
+	// add your tasks that implement ShutdownCallback
+	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+		fmt.Println("Shutdown callback start")
+		time.Sleep(time.Second)
+		fmt.Println("Shutdown callback finished")
+		return nil
+	}))
+
+	// start shutdown managers
+	if err := gs.Start(); err != nil {
+		fmt.Println("Start:", err)
+		return
+	}
+
+	// do other stuff
+	time.Sleep(time.Hour)
+}
+
+// Graceful shutdown will listen for SQS messages on "example-sqs-queue".
+// When a termination message with current EC2 instance id is received
+// it will run all callbacks in separate go routines.
+// While callbacks are running it will call aws api 
+// RecordLifecycleActionHeartbeatInput autoscaler every 15 seconds.
+// When callbacks return, the application will call aws api CompleteLifecycleAction.
+func Example_aws() {
+	// initialize gracefulshutdown with ping time
+	gs := gracefulshutdown.New(time.Second*15)
+
+	// add posix shutdown manager
+	gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
+
+	// add aws shutdown manager
+	gs.AddShutdownManager(awsmanager.NewAwsManager(nil, "example-sqs-queue", "example-lifecycle-hook-name"))
+
+	// add your tasks that implement ShutdownCallback
+	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+		fmt.Println("Shutdown callback start")
+		time.Sleep(time.Second)
+		fmt.Println("Shutdown callback finished")
+		return nil
+	}))
+
+	// start shutdown managers
+	if err := gs.Start(); err != nil {
+		fmt.Println("Start:", err)
+		return
+	}
+
+	// do other stuff
+	time.Sleep(time.Hour)
+}

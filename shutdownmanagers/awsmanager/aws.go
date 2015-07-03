@@ -1,3 +1,9 @@
+/*
+AwsManager provides a listener for a message on SQS queue from the
+Autoscaler requesting instance termination. It handles sending periodic
+calls to RecordLifecycleActionHeartbeat and after all callbacks finish
+a call to CompleteLifecycleAction.
+*/
 package awsmanager
 
 import (
@@ -16,6 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
+// AwsManager implements ShutdownManager interface that is added
+// to GracefulShutdown. Initialize with NewAwsManager.
 type AwsManager struct {
 	queueName         string
 	lifecycleHookName string
@@ -43,6 +51,11 @@ type lifecycleHookMessage struct {
 	LifecycleHookName    string `json:"LifecycleHookName"`
 }
 
+// NewAwsManager initializes the AwsManager. credentials can be nil if
+// credentials are set in ~/.aws/credntials, otherwise see aws-sdk-go
+// documentation. queueName is name of the SQS queue where instance terminating
+// message will be received. lifecycleHookName is name of lifecycleHook
+// that we will listen for.
 func NewAwsManager(credentials *credentials.Credentials, queueName string, lifecycleHookName string) *AwsManager {
 	return &AwsManager{
 		queueName:         queueName,
@@ -51,6 +64,8 @@ func NewAwsManager(credentials *credentials.Credentials, queueName string, lifec
 	}
 }
 
+// Start starts listening to sqs queue for termination messages. Will return
+// error if aws metadata is not available or if invalid sqs queueName is given.
 func (awsManager *AwsManager) Start(ssi gracefulshutdown.StartShutdownInterface) error {
 	availabilityZone, err := awsManager.getMetadata("placement/availability-zone")
 	if err != nil {
@@ -160,6 +175,7 @@ func (awsManager *AwsManager) isMyShutdownMessage(message string) bool {
 	return true
 }
 
+// Ping calls aws api RecordLifecycleActionHeartbeat.
 func (awsManager *AwsManager) Ping() {
 	heartbeatInput := &autoscaling.RecordLifecycleActionHeartbeatInput{
 		AutoScalingGroupName: &awsManager.autoscalingGroupName,
@@ -174,6 +190,7 @@ func (awsManager *AwsManager) Ping() {
 	}
 }
 
+// ShutdownFinish calls aws api CompleteLifecycleAction.
 func (awsManager *AwsManager) ShutdownFinish() {
 	actionResult := "CONTINUE"
 
