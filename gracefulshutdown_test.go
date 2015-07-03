@@ -16,7 +16,7 @@ func (f SMPingFunc) ShutdownFinish() {
 
 }
 
-func (f SMPingFunc) Start(*GracefulShutdown) error {
+func (f SMPingFunc) Start(ssi StartShutdownInterface) error {
 	return nil
 }
 
@@ -30,7 +30,7 @@ func (f SMFinishFunc) ShutdownFinish() {
 	f()
 }
 
-func (f SMFinishFunc) Start(*GracefulShutdown) error {
+func (f SMFinishFunc) Start(ssi StartShutdownInterface) error {
 	return nil
 }
 
@@ -44,7 +44,7 @@ func (f SMStartFunc) ShutdownFinish() {
 
 }
 
-func (f SMStartFunc) Start(*GracefulShutdown) error {
+func (f SMStartFunc) Start(ssi StartShutdownInterface) error {
 	return f()
 }
 

@@ -15,8 +15,12 @@ func (f ShutdownFunc) OnShutdown() error {
 	return f()
 }
 
+type StartShutdownInterface interface {
+	StartShutdown(sm ShutdownManager)
+}
+
 type ShutdownManager interface {
-	Start(gs *GracefulShutdown) error
+	Start(ssi StartShutdownInterface) error
 	Ping()
 	ShutdownFinish()
 }

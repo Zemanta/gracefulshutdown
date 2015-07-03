@@ -1,4 +1,4 @@
-package gracefulshutdown
+package awsmanager
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	
+	"github.com/Zemanta/gracefulshutdown"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -48,7 +50,7 @@ func NewAwsManager(credentials *credentials.Credentials, queueName string, lifec
 	}
 }
 
-func (awsManager *AwsManager) Start(gs *GracefulShutdown) error {
+func (awsManager *AwsManager) Start(ssi gracefulshutdown.StartShutdownInterface) error {
 	availabilityZone, err := awsManager.getMetadata("placement/availability-zone")
 	if err != nil {
 		return err
@@ -104,7 +106,7 @@ func (awsManager *AwsManager) Start(gs *GracefulShutdown) error {
 					// TODO
 				}
 
-				gs.StartShutdown(awsManager)
+				ssi.StartShutdown(awsManager)
 				return
 			}
 		}
