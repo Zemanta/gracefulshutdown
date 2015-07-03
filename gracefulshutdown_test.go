@@ -1,9 +1,9 @@
 package gracefulshutdown
 
 import (
+	"errors"
 	"testing"
 	"time"
-	"errors"
 )
 
 type SMPingFunc func()
@@ -58,7 +58,7 @@ func TestCallbacksGetCalled(t *testing.T) {
 			return nil
 		}))
 	}
-	
+
 	gs.StartShutdown(SMPingFunc(func() {}))
 
 	if len(c) != 15 {
@@ -68,7 +68,7 @@ func TestCallbacksGetCalled(t *testing.T) {
 
 func TestStartGetsCalled(t *testing.T) {
 	gs := New(time.Hour)
-	
+
 	c := make(chan int, 100)
 	for i := 0; i < 15; i++ {
 		gs.AddShutdownManager(SMStartFunc(func() error {
@@ -76,9 +76,9 @@ func TestStartGetsCalled(t *testing.T) {
 			return nil
 		}))
 	}
-	
+
 	gs.Start()
-	
+
 	if len(c) != 15 {
 		t.Error("Expected 15 Start to be called, got ", len(c))
 	}
@@ -86,11 +86,11 @@ func TestStartGetsCalled(t *testing.T) {
 
 func TestStartErrorGetsReturned(t *testing.T) {
 	gs := New(time.Hour)
-	
+
 	gs.AddShutdownManager(SMStartFunc(func() error {
 		return errors.New("my-error")
 	}))
-	
+
 	err := gs.Start()
 	if err == nil || err.Error() != "my-error" {
 		t.Error("Shutdown did not return my-error, got ", err)
@@ -99,7 +99,7 @@ func TestStartErrorGetsReturned(t *testing.T) {
 
 func TestPingGetsCalled(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2*time.Millisecond)
+	gs := New(2 * time.Millisecond)
 
 	gs.AddShutdownCallback(ShutdownFunc(func() error {
 		time.Sleep(5 * time.Millisecond)
@@ -109,7 +109,7 @@ func TestPingGetsCalled(t *testing.T) {
 	gs.StartShutdown(SMPingFunc(func() {
 		c <- 1
 	}))
-	
+
 	time.Sleep(5 * time.Millisecond)
 
 	if len(c) != 3 {
@@ -119,7 +119,7 @@ func TestPingGetsCalled(t *testing.T) {
 
 func TestShutdownFinishGetsCalled(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2*time.Millisecond)
+	gs := New(2 * time.Millisecond)
 
 	gs.AddShutdownCallback(ShutdownFunc(func() error {
 		time.Sleep(5 * time.Millisecond)

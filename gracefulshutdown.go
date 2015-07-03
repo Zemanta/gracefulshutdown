@@ -26,17 +26,17 @@ type ShutdownManager interface {
 }
 
 type GracefulShutdown struct {
-	callbacks  []ShutdownCallback
-	managers   []ShutdownManager
+	callbacks []ShutdownCallback
+	managers  []ShutdownManager
 
 	pingTime time.Duration
 }
 
 func New(pingTime time.Duration) *GracefulShutdown {
 	return &GracefulShutdown{
-		callbacks:  make([]ShutdownCallback, 0, 10),
-		managers:   make([]ShutdownManager, 0, 3),
-		pingTime:   pingTime,
+		callbacks: make([]ShutdownCallback, 0, 10),
+		managers:  make([]ShutdownManager, 0, 3),
+		pingTime:  pingTime,
 	}
 }
 

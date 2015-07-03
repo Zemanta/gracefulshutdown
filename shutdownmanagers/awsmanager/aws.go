@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	
+
 	"github.com/Zemanta/gracefulshutdown"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -24,13 +24,13 @@ type AwsManager struct {
 
 	instanceId string
 	region     string
-	
+
 	credentials *credentials.Credentials
 
 	autoScaling *autoscaling.AutoScaling
 }
 
-type LifecycleHookMessage struct {
+type lifecycleHookMessage struct {
 	AutoScalingGroupName string `json:"AutoScalingGroupName"`
 	Service              string `json:"Service"`
 	Time                 string `json:"Time"`
@@ -44,9 +44,9 @@ type LifecycleHookMessage struct {
 
 func NewAwsManager(credentials *credentials.Credentials, queueName string, lifecycleHookName string) *AwsManager {
 	return &AwsManager{
-		queueName:          queueName,
-		lifecycleHookName:  lifecycleHookName,
-		credentials: credentials,
+		queueName:         queueName,
+		lifecycleHookName: lifecycleHookName,
+		credentials:       credentials,
 	}
 }
 
@@ -63,7 +63,7 @@ func (awsManager *AwsManager) Start(ssi gracefulshutdown.StartShutdownInterface)
 	}
 
 	awsConfig := &aws.Config{
-		Region: awsManager.region,
+		Region:      awsManager.region,
 		Credentials: awsManager.credentials,
 	}
 	awsManager.autoScaling = autoscaling.New(awsConfig)
@@ -132,25 +132,25 @@ func (awsManager *AwsManager) getMetadata(resId string) (string, error) {
 }
 
 func (awsManager *AwsManager) isMyShutdownMessage(message string) bool {
-	lifecycleHookMessage := &LifecycleHookMessage{}
-	err := json.NewDecoder(strings.NewReader(message)).Decode(lifecycleHookMessage)
+	hookMessage := &lifecycleHookMessage{}
+	err := json.NewDecoder(strings.NewReader(message)).Decode(hookMessage)
 	if err != nil {
 		// not json message
 		return false
 	}
 
-	if lifecycleHookMessage.LifecycleHookName != awsManager.lifecycleHookName {
+	if hookMessage.LifecycleHookName != awsManager.lifecycleHookName {
 		// not our hook
 		return false
 	}
 
-	if lifecycleHookMessage.EC2InstanceId != awsManager.instanceId {
+	if hookMessage.EC2InstanceId != awsManager.instanceId {
 		// not our instance
 		return false
 	}
 
-	awsManager.lifecycleActionToken = lifecycleHookMessage.LifecycleActionToken
-	awsManager.autoscalingGroupName = lifecycleHookMessage.AutoScalingGroupName
+	awsManager.lifecycleActionToken = hookMessage.LifecycleActionToken
+	awsManager.autoscalingGroupName = hookMessage.AutoScalingGroupName
 
 	return true
 }
