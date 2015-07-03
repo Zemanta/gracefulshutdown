@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Zemanta/gracefulshutdown"
 
@@ -116,7 +117,11 @@ func (awsManager *AwsManager) Start(ssi gracefulshutdown.StartShutdownInterface)
 }
 
 func (awsManager *AwsManager) getMetadata(resId string) (string, error) {
-	resp, err := http.Get("http://169.254.169.254/latest/meta-data/" + resId)
+	client := http.Client{
+		Timeout: time.Second * 5,
+	}
+	
+	resp, err := client.Get("http://169.254.169.254/latest/meta-data/" + resId)
 	if err != nil {
 		return "", err
 	}
