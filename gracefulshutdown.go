@@ -3,7 +3,6 @@ package gracefulshutdown
 import (
 	"sync"
 	"time"
-	"os"
 )
 
 type ShutdownCallback interface {
@@ -17,7 +16,7 @@ func (f ShutdownFunc) OnShutdown() error {
 }
 
 type ShutdownManager interface {
-	Start(gs *GracefulShutdown)
+	Start(gs *GracefulShutdown) error
 	Ping()
 	ShutdownFinish()
 }
@@ -32,7 +31,7 @@ type GracefulShutdown struct {
 func New(pingTime time.Duration) *GracefulShutdown {
 	return &GracefulShutdown{
 		callbacks:  make([]ShutdownCallback, 0, 10),
-		managers:   make([], 0, 3)
+		managers:   make([]ShutdownManager, 0, 3),
 		pingTime:   pingTime,
 	}
 }
@@ -48,7 +47,7 @@ func (gs *GracefulShutdown) Start() error {
 }
 
 func (gs *GracefulShutdown) AddShutdownManager(manager ShutdownManager) {
-	gs.managers = appen(gs.managers, manager)
+	gs.managers = append(gs.managers, manager)
 }
 
 func (gs *GracefulShutdown) AddShutdownCallback(shutdownCallback ShutdownCallback) {
@@ -79,6 +78,4 @@ func (gs *GracefulShutdown) StartShutdown(sm ShutdownManager) {
 	ticker.Stop()
 
 	sm.ShutdownFinish()
-	
-	os.Exit(0)
 }

@@ -3,6 +3,7 @@ package gracefulshutdown
 import (
 	"testing"
 	"time"
+	"errors"
 )
 
 type SMPingFunc func()
@@ -15,6 +16,10 @@ func (f SMPingFunc) ShutdownFinish() {
 
 }
 
+func (f SMPingFunc) Start(*GracefulShutdown) error {
+	return nil
+}
+
 type SMFinishFunc func()
 
 func (f SMFinishFunc) Ping() {
@@ -25,8 +30,26 @@ func (f SMFinishFunc) ShutdownFinish() {
 	f()
 }
 
+func (f SMFinishFunc) Start(*GracefulShutdown) error {
+	return nil
+}
+
+type SMStartFunc func() error
+
+func (f SMStartFunc) Ping() {
+
+}
+
+func (f SMStartFunc) ShutdownFinish() {
+
+}
+
+func (f SMStartFunc) Start(*GracefulShutdown) error {
+	return f()
+}
+
 func TestCallbacksGetCalled(t *testing.T) {
-	gs := New(time.Millisecond, "", "")
+	gs := New(time.Millisecond)
 
 	c := make(chan int, 100)
 	for i := 0; i < 15; i++ {
@@ -35,7 +58,7 @@ func TestCallbacksGetCalled(t *testing.T) {
 			return nil
 		}))
 	}
-
+	
 	gs.StartShutdown(SMPingFunc(func() {}))
 
 	if len(c) != 15 {
@@ -43,9 +66,40 @@ func TestCallbacksGetCalled(t *testing.T) {
 	}
 }
 
+func TestStartGetsCalled(t *testing.T) {
+	gs := New(time.Hour)
+	
+	c := make(chan int, 100)
+	for i := 0; i < 15; i++ {
+		gs.AddShutdownManager(SMStartFunc(func() error {
+			c <- 1
+			return nil
+		}))
+	}
+	
+	gs.Start()
+	
+	if len(c) != 15 {
+		t.Error("Expected 15 Start to be called, got ", len(c))
+	}
+}
+
+func TestStartErrorGetsReturned(t *testing.T) {
+	gs := New(time.Hour)
+	
+	gs.AddShutdownManager(SMStartFunc(func() error {
+		return errors.New("my-error")
+	}))
+	
+	err := gs.Start()
+	if err == nil || err.Error() != "my-error" {
+		t.Error("Shutdown did not return my-error, got ", err)
+	}
+}
+
 func TestPingGetsCalled(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2*time.Millisecond, "", "")
+	gs := New(2*time.Millisecond)
 
 	gs.AddShutdownCallback(ShutdownFunc(func() error {
 		time.Sleep(5 * time.Millisecond)
@@ -65,7 +119,7 @@ func TestPingGetsCalled(t *testing.T) {
 
 func TestShutdownFinishGetsCalled(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2*time.Millisecond, "", "")
+	gs := New(2*time.Millisecond)
 
 	gs.AddShutdownCallback(ShutdownFunc(func() error {
 		time.Sleep(5 * time.Millisecond)

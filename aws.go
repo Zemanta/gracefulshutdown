@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
@@ -22,8 +23,7 @@ type AwsManager struct {
 	instanceId string
 	region     string
 	
-	awsAccessKeyId     string
-	awsSecretAccessKey string
+	credentials *credentials.Credentials
 
 	autoScaling *autoscaling.AutoScaling
 }
@@ -40,12 +40,11 @@ type LifecycleHookMessage struct {
 	LifecycleHookName    string `json:"LifecycleHookName"`
 }
 
-func NewAwsManager(awsAccessKeyId string, awsSecretAccessKey string, queueName string, lifecycleHookName string) *AwsManager {
+func NewAwsManager(credentials *credentials.Credentials, queueName string, lifecycleHookName string) *AwsManager {
 	return &AwsManager{
 		queueName:          queueName,
 		lifecycleHookName:  lifecycleHookName,
-		awsAccessKeyId:     awsAccessKeyId,
-		awsSecretAccessKey: awsSecretAccessKey,
+		credentials: credentials,
 	}
 }
 
@@ -61,9 +60,12 @@ func (awsManager *AwsManager) Start(gs *GracefulShutdown) error {
 		return err
 	}
 
-	awsManager.autoScaling = autoscaling.New(&aws.Config{Region: awsManager.region})
-
-	sqsInstance := sqs.New(&aws.Config{Region: awsManager.region})
+	awsConfig := &aws.Config{
+		Region: awsManager.region,
+		Credentials: awsManager.credentials,
+	}
+	awsManager.autoScaling = autoscaling.New(awsConfig)
+	sqsInstance := sqs.New(awsConfig)
 
 	queueURLOutput, err := sqsInstance.GetQueueURL(&sqs.GetQueueURLInput{QueueName: &awsManager.queueName})
 	if err != nil {
