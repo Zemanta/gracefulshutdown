@@ -33,8 +33,8 @@ func NewPosixSignalManager(sig ...os.Signal) *PosixSignalManager {
 	}
 }
 
-// Start starts listening for posix signals. 
-func (posixSignalManager *PosixSignalManager) Start(ssi gracefulshutdown.StartShutdownInterface) error {
+// Start starts listening for posix signals.
+func (posixSignalManager *PosixSignalManager) Start(gs gracefulshutdown.GSInterface) error {
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, posixSignalManager.signals...)
@@ -42,18 +42,19 @@ func (posixSignalManager *PosixSignalManager) Start(ssi gracefulshutdown.StartSh
 		// Block until a signal is received.
 		<-c
 
-		ssi.StartShutdown(posixSignalManager)
+		gs.StartShutdown(posixSignalManager)
 	}()
 
 	return nil
 }
 
 // Ping does nothing.
-func (posixSignalManager *PosixSignalManager) Ping() {
-
+func (posixSignalManager *PosixSignalManager) Ping() error {
+	return nil
 }
 
 // ShutdownFinish exits the app with os.Exit(0)
-func (posixSignalManager *PosixSignalManager) ShutdownFinish() {
+func (posixSignalManager *PosixSignalManager) ShutdownFinish() error {
 	os.Exit(0)
+	return nil
 }

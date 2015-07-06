@@ -7,18 +7,18 @@ Installation
 To install run:
 
 	go get github.com/Zemanta/gracefulshutdown
-	
+
 Example - posix signals
 
 Graceful shutdown will listen for posix SIGINT and SIGTERM signals.
 When they are received it will run all callbacks in separate go routines.
 When callbacks return, the application will exit with os.Exit(0)
 	package main
-	
+
 	import (
 		"fmt"
 		"time"
-		
+
 		"github.com/Zemanta/gracefulshutdown"
 		"github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal"
 	)
@@ -53,15 +53,15 @@ Example - aws
 Graceful shutdown will listen for SQS messages on "example-sqs-queue".
 When a termination message with current EC2 instance id is received
 it will run all callbacks in separate go routines.
-While callbacks are running it will call aws api 
+While callbacks are running it will call aws api
 RecordLifecycleActionHeartbeatInput autoscaler every 15 minutes.
 When callbacks return, the application will call aws api CompleteLifecycleAction.
 	package main
-	
+
 	import (
 		"fmt"
 		"time"
-		
+
 		"github.com/Zemanta/gracefulshutdown"
 		"github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal"
 		"github.com/Zemanta/gracefulshutdown/shutdownmanagers/awsmanager"
@@ -116,29 +116,45 @@ func (f ShutdownFunc) OnShutdown() error {
 	return f()
 }
 
-// StartShutdownInterface is an interface implemented by GracefulShutdown,
-// that gets passed to ShutdownManager to call StartShutdown when shutdown
-// is requested.
-type StartShutdownInterface interface {
-	StartShutdown(sm ShutdownManager)
-}
-
 // ShutdownManager is an interface implemnted by ShutdownManagers.
 // ShutdownManagers start listening for shtudown requests in Start.
-// When they call StartShutdown on StartShutdownInterface, Ping gets 
+// When they call StartShutdown on StartShutdownInterface, Ping gets
 // called periodically, and once all ShutdownCallbacks return,
 // ShutdownFinish is called.
 type ShutdownManager interface {
-	Start(ssi StartShutdownInterface) error
-	Ping()
-	ShutdownFinish()
+	Start(gs GSInterface) error
+	Ping() error
+	ShutdownFinish() error
+}
+
+// ErrorHandler is an interface you can pass to SetErrorHandler to
+// handle asynchronous errors.
+type ErrorHandler interface {
+	OnError(err error)
+}
+
+// ErrorFunc is a helper type, so you can easily provide anonymous functions
+// as ErrorHandlers.
+type ErrorFunc func(err error)
+
+func (f ErrorFunc) OnError(err error) {
+	f(err)
+}
+
+// GSInterface is an interface implemented by GracefulShutdown,
+// that gets passed to ShutdownManager to call StartShutdown when shutdown
+// is requested.
+type GSInterface interface {
+	StartShutdown(sm ShutdownManager)
+	ReportError(err error)
 }
 
 // GracefulShutdown is main struct that handles ShutdownCallbacks and
 // ShutdownManagers. Initialize it with New.
 type GracefulShutdown struct {
-	callbacks []ShutdownCallback
-	managers  []ShutdownManager
+	callbacks    []ShutdownCallback
+	managers     []ShutdownManager
+	errorHandler ErrorHandler
 
 	pingTime time.Duration
 }
@@ -184,15 +200,27 @@ func (gs *GracefulShutdown) AddShutdownCallback(shutdownCallback ShutdownCallbac
 	gs.callbacks = append(gs.callbacks, shutdownCallback)
 }
 
+// AddErrorHandler adds an ErrorHandler that will be called when an error
+// is encountered.
+//
+// You can provide anything that implements ErrorHandler interface,
+// or you can supply a function like this:
+//	AddErrorHandler(gracefulshutdown.ErrorFunc(func (err error) {
+//		// handle error
+//	}))
+func (gs *GracefulShutdown) AddErrorHandler(errorHandler ErrorHandler) {
+	gs.errorHandler = errorHandler
+}
+
 // StartShutdown is called from a ShutdownManager and will initiate shutdown:
 // start sending pings, call all ShutdownCallbacks, wait for callbacks
 // to finish and call ShutdownFinish on ShutdownManager
 func (gs *GracefulShutdown) StartShutdown(sm ShutdownManager) {
 	ticker := time.NewTicker(gs.pingTime)
 	go func() {
-		sm.Ping()
+		gs.ReportError(sm.Ping())
 		for _ = range ticker.C {
-			sm.Ping()
+			gs.ReportError(sm.Ping())
 		}
 	}()
 
@@ -202,7 +230,7 @@ func (gs *GracefulShutdown) StartShutdown(sm ShutdownManager) {
 		go func(shutdownCallback ShutdownCallback) {
 			defer wg.Done()
 
-			shutdownCallback.OnShutdown()
+			gs.ReportError(shutdownCallback.OnShutdown())
 		}(shutdownCallback)
 	}
 
@@ -210,5 +238,13 @@ func (gs *GracefulShutdown) StartShutdown(sm ShutdownManager) {
 
 	ticker.Stop()
 
-	sm.ShutdownFinish()
+	gs.ReportError(sm.ShutdownFinish())
+}
+
+// ReportError is a function that can be used to report errors to
+// ErrorHandler. It is used in ShutdownManagers.
+func (gs *GracefulShutdown) ReportError(err error) {
+	if err != nil && gs.errorHandler != nil {
+		gs.errorHandler.OnError(err)
+	}
 }

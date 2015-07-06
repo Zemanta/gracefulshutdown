@@ -14,6 +14,10 @@ func (f startShutdownFunc) StartShutdown(sm gracefulshutdown.ShutdownManager) {
 	f(sm)
 }
 
+func (f startShutdownFunc) ReportError(err error) {
+
+}
+
 func waitSig(t *testing.T, c <-chan int) {
 	select {
 	case <-c:

@@ -8,7 +8,6 @@ package awsmanager
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -66,7 +65,7 @@ func NewAwsManager(credentials *credentials.Credentials, queueName string, lifec
 
 // Start starts listening to sqs queue for termination messages. Will return
 // error if aws metadata is not available or if invalid sqs queueName is given.
-func (awsManager *AwsManager) Start(ssi gracefulshutdown.StartShutdownInterface) error {
+func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 	availabilityZone, err := awsManager.getMetadata("placement/availability-zone")
 	if err != nil {
 		return err
@@ -102,9 +101,7 @@ func (awsManager *AwsManager) Start(ssi gracefulshutdown.StartShutdownInterface)
 
 		for {
 			receiveMessageOutput, err := sqsInstance.ReceiveMessage(receiveMessageInput)
-			if err != nil {
-				// TODO
-			}
+			gs.ReportError(err)
 
 			if len(receiveMessageOutput.Messages) < 1 {
 				// no messages received
@@ -118,11 +115,9 @@ func (awsManager *AwsManager) Start(ssi gracefulshutdown.StartShutdownInterface)
 					QueueURL:      queueURL,
 					ReceiptHandle: message.ReceiptHandle,
 				})
-				if err != nil {
-					// TODO
-				}
+				gs.ReportError(err)
 
-				ssi.StartShutdown(awsManager)
+				gs.StartShutdown(awsManager)
 				return
 			}
 		}
@@ -135,7 +130,7 @@ func (awsManager *AwsManager) getMetadata(resId string) (string, error) {
 	client := http.Client{
 		Timeout: time.Second * 5,
 	}
-	
+
 	resp, err := client.Get("http://169.254.169.254/latest/meta-data/" + resId)
 	if err != nil {
 		return "", err
@@ -176,7 +171,7 @@ func (awsManager *AwsManager) isMyShutdownMessage(message string) bool {
 }
 
 // Ping calls aws api RecordLifecycleActionHeartbeat.
-func (awsManager *AwsManager) Ping() {
+func (awsManager *AwsManager) Ping() error {
 	heartbeatInput := &autoscaling.RecordLifecycleActionHeartbeatInput{
 		AutoScalingGroupName: &awsManager.autoscalingGroupName,
 		LifecycleActionToken: &awsManager.lifecycleActionToken,
@@ -184,14 +179,11 @@ func (awsManager *AwsManager) Ping() {
 	}
 
 	_, err := awsManager.autoScaling.RecordLifecycleActionHeartbeat(heartbeatInput)
-	if err != nil {
-		// TODO
-		fmt.Println("Heartbeat:", err)
-	}
+	return err
 }
 
 // ShutdownFinish calls aws api CompleteLifecycleAction.
-func (awsManager *AwsManager) ShutdownFinish() {
+func (awsManager *AwsManager) ShutdownFinish() error {
 	actionResult := "CONTINUE"
 
 	actionInput := &autoscaling.CompleteLifecycleActionInput{
@@ -202,8 +194,5 @@ func (awsManager *AwsManager) ShutdownFinish() {
 	}
 
 	_, err := awsManager.autoScaling.CompleteLifecycleAction(actionInput)
-	if err != nil {
-		// TODO
-		fmt.Println("Complete:", err)
-	}
+	return err
 }
