@@ -143,7 +143,7 @@ func TestErrorHandlerFromPing(t *testing.T) {
 	c := make(chan int, 100)
 	gs := New(2 * time.Millisecond)
 
-	gs.AddErrorHandler(ErrorFunc(func(err error) {
+	gs.SetErrorHandler(ErrorFunc(func(err error) {
 		if err.Error() == "my-error" {
 			c <- 1
 		}
@@ -169,7 +169,7 @@ func TestErrorHandlerFromFinishShutdown(t *testing.T) {
 	c := make(chan int, 100)
 	gs := New(2 * time.Millisecond)
 
-	gs.AddErrorHandler(ErrorFunc(func(err error) {
+	gs.SetErrorHandler(ErrorFunc(func(err error) {
 		if err.Error() == "my-error" {
 			c <- 1
 		}
@@ -188,7 +188,7 @@ func TestErrorHandlerFromCallbacks(t *testing.T) {
 	c := make(chan int, 100)
 	gs := New(2 * time.Millisecond)
 
-	gs.AddErrorHandler(ErrorFunc(func(err error) {
+	gs.SetErrorHandler(ErrorFunc(func(err error) {
 		if err.Error() == "my-error" {
 			c <- 1
 		}
@@ -213,7 +213,7 @@ func TestErrorHandlerDirect(t *testing.T) {
 	c := make(chan int, 100)
 	gs := New(2 * time.Millisecond)
 
-	gs.AddErrorHandler(ErrorFunc(func(err error) {
+	gs.SetErrorHandler(ErrorFunc(func(err error) {
 		if err.Error() == "my-error" {
 			c <- 1
 		}

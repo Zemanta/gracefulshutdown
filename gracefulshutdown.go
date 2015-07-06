@@ -200,15 +200,15 @@ func (gs *GracefulShutdown) AddShutdownCallback(shutdownCallback ShutdownCallbac
 	gs.callbacks = append(gs.callbacks, shutdownCallback)
 }
 
-// AddErrorHandler adds an ErrorHandler that will be called when an error
+// SetErrorHandler sets an ErrorHandler that will be called when an error
 // is encountered.
 //
 // You can provide anything that implements ErrorHandler interface,
 // or you can supply a function like this:
-//	AddErrorHandler(gracefulshutdown.ErrorFunc(func (err error) {
+//	SetErrorHandler(gracefulshutdown.ErrorFunc(func (err error) {
 //		// handle error
 //	}))
-func (gs *GracefulShutdown) AddErrorHandler(errorHandler ErrorHandler) {
+func (gs *GracefulShutdown) SetErrorHandler(errorHandler ErrorHandler) {
 	gs.errorHandler = errorHandler
 }
 
