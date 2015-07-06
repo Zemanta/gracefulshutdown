@@ -48,6 +48,52 @@ When callbacks return, the application will exit with os.Exit(0)
 		time.Sleep(time.Hour)
 	}
 
+Example - posix signals with error handler
+
+The same as above, except now we set an ErrorHandler that prints the
+error returned from ShutdownCallback.
+
+	package main
+
+	import (
+		"fmt"
+		"time"
+		"errors"
+
+		"github.com/Zemanta/gracefulshutdown"
+		"github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal"
+	)
+
+	func main() {
+		// initialize gracefulshutdown with ping time
+		gs := gracefulshutdown.New(time.Hour)
+
+		// add posix shutdown manager
+		gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
+
+		// set error handler
+		gs.SetErrorHandler(gracefulshutdown.ErrorFunc(func(err error) {
+			fmt.Println("Error:", err)
+		}))
+
+		// add your tasks that implement ShutdownCallback
+		gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+			fmt.Println("Shutdown callback start")
+			time.Sleep(time.Second)
+			fmt.Println("Shutdown callback finished")
+			return errors.New("my-error")
+		}))
+
+		// start shutdown managers
+		if err := gs.Start(); err != nil {
+			fmt.Println("Start:", err)
+			return
+		}
+
+		// do other stuff
+		time.Sleep(time.Hour)
+	}
+
 Example - aws
 
 Graceful shutdown will listen for SQS messages on "example-sqs-queue".
@@ -201,7 +247,7 @@ func (gs *GracefulShutdown) AddShutdownCallback(shutdownCallback ShutdownCallbac
 }
 
 // SetErrorHandler sets an ErrorHandler that will be called when an error
-// is encountered.
+// is encountered in ShutdownCallback or in ShutdownManager.
 //
 // You can provide anything that implements ErrorHandler interface,
 // or you can supply a function like this:

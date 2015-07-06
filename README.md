@@ -49,6 +49,53 @@ func main() {
 }
 ```
 
+## Example - posix signals with error handler
+
+The same as above, except now we set an ErrorHandler that prints the error returned from ShutdownCallback.
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+	"errors"
+
+	"github.com/Zemanta/gracefulshutdown"
+	"github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal"
+)
+
+func main() {
+	// initialize gracefulshutdown with ping time
+	gs := gracefulshutdown.New(time.Hour)
+
+	// add posix shutdown manager
+	gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
+
+	// set error handler
+	gs.SetErrorHandler(gracefulshutdown.ErrorFunc(func(err error) {
+		fmt.Println("Error:", err)
+	}))
+
+	// add your tasks that implement ShutdownCallback
+	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+		fmt.Println("Shutdown callback start")
+		time.Sleep(time.Second)
+		fmt.Println("Shutdown callback finished")
+		return errors.New("my-error")
+	}))
+
+	// start shutdown managers
+	if err := gs.Start(); err != nil {
+		fmt.Println("Start:", err)
+		return
+	}
+
+	// do other stuff
+	time.Sleep(time.Hour)
+}
+```
+
 ## Example - aws
 
 Graceful shutdown will listen for SQS messages on "example-sqs-queue". When a termination message with current EC2 instance id is received it will run all callbacks in separate go routines. While callbacks are running it will call aws api RecordLifecycleActionHeartbeatInput autoscaler every 15 minutes. When callbacks return, the application will call aws api CompleteLifecycleAction.
