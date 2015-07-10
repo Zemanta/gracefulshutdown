@@ -24,6 +24,10 @@ import (
 // AwsManager implements ShutdownManager interface that is added
 // to GracefulShutdown. Initialize with NewAwsManager.
 type AwsManager struct {
+	ticker   *time.Ticker
+	gs       gracefulshutdown.GSInterface
+	pingTime time.Duration
+
 	queueName         string
 	lifecycleHookName string
 
@@ -55,17 +59,20 @@ type lifecycleHookMessage struct {
 // documentation. queueName is name of the SQS queue where instance terminating
 // message will be received. lifecycleHookName is name of lifecycleHook
 // that we will listen for.
-func NewAwsManager(credentials *credentials.Credentials, queueName string, lifecycleHookName string) *AwsManager {
+func NewAwsManager(credentials *credentials.Credentials, queueName string, lifecycleHookName string, pingTime time.Duration) *AwsManager {
 	return &AwsManager{
 		queueName:         queueName,
 		lifecycleHookName: lifecycleHookName,
 		credentials:       credentials,
+		pingTime:          pingTime,
 	}
 }
 
 // Start starts listening to sqs queue for termination messages. Will return
 // error if aws metadata is not available or if invalid sqs queueName is given.
 func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
+	awsManager.gs = gs
+
 	availabilityZone, err := awsManager.getMetadata("placement/availability-zone")
 	if err != nil {
 		return err
@@ -170,6 +177,18 @@ func (awsManager *AwsManager) isMyShutdownMessage(message string) bool {
 	return true
 }
 
+// ShutdownStart calls Ping every pingTime
+func (awsManager *AwsManager) ShutdownStart() error {
+	awsManager.ticker = time.NewTicker(awsManager.pingTime)
+	go func() {
+		for {
+			awsManager.gs.ReportError(awsManager.Ping())
+			<-awsManager.ticker.C
+		}
+	}()
+	return nil
+}
+
 // Ping calls aws api RecordLifecycleActionHeartbeat.
 func (awsManager *AwsManager) Ping() error {
 	heartbeatInput := &autoscaling.RecordLifecycleActionHeartbeatInput{
@@ -184,6 +203,8 @@ func (awsManager *AwsManager) Ping() error {
 
 // ShutdownFinish calls aws api CompleteLifecycleAction.
 func (awsManager *AwsManager) ShutdownFinish() error {
+	awsManager.ticker.Stop()
+
 	actionResult := "CONTINUE"
 
 	actionInput := &autoscaling.CompleteLifecycleActionInput{

@@ -6,23 +6,23 @@ import (
 	"time"
 )
 
-type SMPingFunc func() error
+type SMShutdownStartFunc func() error
 
-func (f SMPingFunc) Ping() error {
+func (f SMShutdownStartFunc) ShutdownStart() error {
 	return f()
 }
 
-func (f SMPingFunc) ShutdownFinish() error {
+func (f SMShutdownStartFunc) ShutdownFinish() error {
 	return nil
 }
 
-func (f SMPingFunc) Start(gs GSInterface) error {
+func (f SMShutdownStartFunc) Start(gs GSInterface) error {
 	return nil
 }
 
 type SMFinishFunc func() error
 
-func (f SMFinishFunc) Ping() error {
+func (f SMFinishFunc) ShutdownStart() error {
 	return nil
 }
 
@@ -36,7 +36,7 @@ func (f SMFinishFunc) Start(gs GSInterface) error {
 
 type SMStartFunc func() error
 
-func (f SMStartFunc) Ping() error {
+func (f SMStartFunc) ShutdownStart() error {
 	return nil
 }
 
@@ -49,7 +49,7 @@ func (f SMStartFunc) Start(gs GSInterface) error {
 }
 
 func TestCallbacksGetCalled(t *testing.T) {
-	gs := New(time.Millisecond)
+	gs := New()
 
 	c := make(chan int, 100)
 	for i := 0; i < 15; i++ {
@@ -59,7 +59,7 @@ func TestCallbacksGetCalled(t *testing.T) {
 		}))
 	}
 
-	gs.StartShutdown(SMPingFunc(func() error {
+	gs.StartShutdown(SMFinishFunc(func() error {
 		return nil
 	}))
 
@@ -69,7 +69,7 @@ func TestCallbacksGetCalled(t *testing.T) {
 }
 
 func TestStartGetsCalled(t *testing.T) {
-	gs := New(time.Hour)
+	gs := New()
 
 	c := make(chan int, 100)
 	for i := 0; i < 15; i++ {
@@ -87,7 +87,7 @@ func TestStartGetsCalled(t *testing.T) {
 }
 
 func TestStartErrorGetsReturned(t *testing.T) {
-	gs := New(time.Hour)
+	gs := New()
 
 	gs.AddShutdownManager(SMStartFunc(func() error {
 		return errors.New("my-error")
@@ -99,30 +99,28 @@ func TestStartErrorGetsReturned(t *testing.T) {
 	}
 }
 
-func TestPingGetsCalled(t *testing.T) {
+func TestShutdownStartGetsCalled(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2 * time.Millisecond)
+	gs := New()
 
 	gs.AddShutdownCallback(ShutdownFunc(func() error {
 		time.Sleep(5 * time.Millisecond)
 		return nil
 	}))
 
-	gs.StartShutdown(SMPingFunc(func() error {
+	gs.StartShutdown(SMShutdownStartFunc(func() error {
 		c <- 1
 		return nil
 	}))
 
-	time.Sleep(5 * time.Millisecond)
-
-	if len(c) != 3 {
-		t.Error("Expected 3 pings, got ", len(c))
+	if len(c) != 1 {
+		t.Error("Expected 1 ShutdownStart, got ", len(c))
 	}
 }
 
 func TestShutdownFinishGetsCalled(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2 * time.Millisecond)
+	gs := New()
 
 	gs.AddShutdownCallback(ShutdownFunc(func() error {
 		time.Sleep(5 * time.Millisecond)
@@ -139,9 +137,9 @@ func TestShutdownFinishGetsCalled(t *testing.T) {
 	}
 }
 
-func TestErrorHandlerFromPing(t *testing.T) {
+func TestErrorHandlerFromStartShutdown(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2 * time.Millisecond)
+	gs := New()
 
 	gs.SetErrorHandler(ErrorFunc(func(err error) {
 		if err.Error() == "my-error" {
@@ -149,25 +147,18 @@ func TestErrorHandlerFromPing(t *testing.T) {
 		}
 	}))
 
-	gs.AddShutdownCallback(ShutdownFunc(func() error {
-		time.Sleep(5 * time.Millisecond)
-		return nil
-	}))
-
-	gs.StartShutdown(SMPingFunc(func() error {
+	gs.StartShutdown(SMShutdownStartFunc(func() error {
 		return errors.New("my-error")
 	}))
 
-	time.Sleep(5 * time.Millisecond)
-
-	if len(c) != 3 {
-		t.Error("Expected 3 errors from pings, got ", len(c))
+	if len(c) != 1 {
+		t.Error("Expected 1 error from ShutdownStart, got ", len(c))
 	}
 }
 
 func TestErrorHandlerFromFinishShutdown(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2 * time.Millisecond)
+	gs := New()
 
 	gs.SetErrorHandler(ErrorFunc(func(err error) {
 		if err.Error() == "my-error" {
@@ -186,7 +177,7 @@ func TestErrorHandlerFromFinishShutdown(t *testing.T) {
 
 func TestErrorHandlerFromCallbacks(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2 * time.Millisecond)
+	gs := New()
 
 	gs.SetErrorHandler(ErrorFunc(func(err error) {
 		if err.Error() == "my-error" {
@@ -211,7 +202,7 @@ func TestErrorHandlerFromCallbacks(t *testing.T) {
 
 func TestErrorHandlerDirect(t *testing.T) {
 	c := make(chan int, 100)
-	gs := New(2 * time.Millisecond)
+	gs := New()
 
 	gs.SetErrorHandler(ErrorFunc(func(err error) {
 		if err.Error() == "my-error" {

@@ -48,8 +48,8 @@ func (posixSignalManager *PosixSignalManager) Start(gs gracefulshutdown.GSInterf
 	return nil
 }
 
-// Ping does nothing.
-func (posixSignalManager *PosixSignalManager) Ping() error {
+// ShutdownStart does nothing.
+func (posixSignalManager *PosixSignalManager) ShutdownStart() error {
 	return nil
 }
 

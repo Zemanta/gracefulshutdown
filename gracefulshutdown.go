@@ -145,7 +145,6 @@ package gracefulshutdown
 
 import (
 	"sync"
-	"time"
 )
 
 // ShutdownCallback is an interface you have to implement for callbacks.
@@ -169,7 +168,7 @@ func (f ShutdownFunc) OnShutdown() error {
 // ShutdownFinish is called.
 type ShutdownManager interface {
 	Start(gs GSInterface) error
-	Ping() error
+	ShutdownStart() error
 	ShutdownFinish() error
 }
 
@@ -201,17 +200,14 @@ type GracefulShutdown struct {
 	callbacks    []ShutdownCallback
 	managers     []ShutdownManager
 	errorHandler ErrorHandler
-
-	pingTime time.Duration
 }
 
 // New initializes GracefulShutdown. pingTime is the interval for calling
 // pings on ShutdownManager when shutdown has started.
-func New(pingTime time.Duration) *GracefulShutdown {
+func New() *GracefulShutdown {
 	return &GracefulShutdown{
 		callbacks: make([]ShutdownCallback, 0, 10),
 		managers:  make([]ShutdownManager, 0, 3),
-		pingTime:  pingTime,
 	}
 }
 
@@ -262,13 +258,7 @@ func (gs *GracefulShutdown) SetErrorHandler(errorHandler ErrorHandler) {
 // start sending pings, call all ShutdownCallbacks, wait for callbacks
 // to finish and call ShutdownFinish on ShutdownManager
 func (gs *GracefulShutdown) StartShutdown(sm ShutdownManager) {
-	ticker := time.NewTicker(gs.pingTime)
-	go func() {
-		gs.ReportError(sm.Ping())
-		for _ = range ticker.C {
-			gs.ReportError(sm.Ping())
-		}
-	}()
+	gs.ReportError(sm.ShutdownStart())
 
 	var wg sync.WaitGroup
 	for _, shutdownCallback := range gs.callbacks {
@@ -281,8 +271,6 @@ func (gs *GracefulShutdown) StartShutdown(sm ShutdownManager) {
 	}
 
 	wg.Wait()
-
-	ticker.Stop()
 
 	gs.ReportError(sm.ShutdownFinish())
 }
