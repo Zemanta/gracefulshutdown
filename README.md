@@ -24,8 +24,8 @@ import (
 )
 
 func main() {
-	// initialize gracefulshutdown with ping time
-	gs := gracefulshutdown.New(time.Hour)
+	// initialize gracefulshutdown
+	gs := gracefulshutdown.New()
 
 	// add posix shutdown manager
 	gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
@@ -66,8 +66,8 @@ import (
 )
 
 func main() {
-	// initialize gracefulshutdown with ping time
-	gs := gracefulshutdown.New(time.Hour)
+	// initialize gracefulshutdown
+	gs := gracefulshutdown.New()
 
 	// add posix shutdown manager
 	gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
@@ -108,19 +108,24 @@ import (
 	"time"
 
 	"github.com/Zemanta/gracefulshutdown"
-	"github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal"
 	"github.com/Zemanta/gracefulshutdown/shutdownmanagers/awsmanager"
+	"github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal"
 )
 
 func main() {
 	// initialize gracefulshutdown with ping time
-	gs := gracefulshutdown.New(time.Minute * 15)
+	gs := gracefulshutdown.New()
 
 	// add posix shutdown manager
 	gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
 
 	// add aws shutdown manager
-	gs.AddShutdownManager(awsmanager.NewAwsManager(nil, "example-sqs-queue", "example-lifecycle-hook-name"))
+	gs.AddShutdownManager(awsmanager.NewAwsManager(
+		nil,
+		"example-sqs-queue",
+		"example-lifecycle-hook-name",
+		time.Minute*15,
+	))
 
 	// add your tasks that implement ShutdownCallback
 	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {

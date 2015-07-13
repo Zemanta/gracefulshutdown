@@ -58,7 +58,8 @@ type lifecycleHookMessage struct {
 // credentials are set in ~/.aws/credntials, otherwise see aws-sdk-go
 // documentation. queueName is name of the SQS queue where instance terminating
 // message will be received. lifecycleHookName is name of lifecycleHook
-// that we will listen for.
+// that we will listen for. pingTime is a period for sending
+// RecordLifecycleActionHeartbeats.
 func NewAwsManager(credentials *credentials.Credentials, queueName string, lifecycleHookName string, pingTime time.Duration) *AwsManager {
 	return &AwsManager{
 		queueName:         queueName,
@@ -189,7 +190,8 @@ func (awsManager *AwsManager) ShutdownStart() error {
 	return nil
 }
 
-// Ping calls aws api RecordLifecycleActionHeartbeat.
+// Ping calls aws api RecordLifecycleActionHeartbeat. It is called every
+// pingTime once ShutdownStart is called.
 func (awsManager *AwsManager) Ping() error {
 	heartbeatInput := &autoscaling.RecordLifecycleActionHeartbeatInput{
 		AutoScalingGroupName: &awsManager.autoscalingGroupName,
@@ -201,7 +203,8 @@ func (awsManager *AwsManager) Ping() error {
 	return err
 }
 
-// ShutdownFinish calls aws api CompleteLifecycleAction.
+// ShutdownFinish first stops the ticker for calling Ping,
+// then calls aws api CompleteLifecycleAction.
 func (awsManager *AwsManager) ShutdownFinish() error {
 	awsManager.ticker.Stop()
 

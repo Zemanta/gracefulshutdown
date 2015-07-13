@@ -24,8 +24,8 @@ When callbacks return, the application will exit with os.Exit(0)
 	)
 
 	func main() {
-		// initialize gracefulshutdown with ping time
-		gs := gracefulshutdown.New(time.Hour)
+		// initialize gracefulshutdown
+		gs := gracefulshutdown.New()
 
 		// add posix shutdown manager
 		gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
@@ -65,8 +65,8 @@ error returned from ShutdownCallback.
 	)
 
 	func main() {
-		// initialize gracefulshutdown with ping time
-		gs := gracefulshutdown.New(time.Hour)
+		// initialize gracefulshutdown
+		gs := gracefulshutdown.New()
 
 		// add posix shutdown manager
 		gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
@@ -109,19 +109,24 @@ When callbacks return, the application will call aws api CompleteLifecycleAction
 		"time"
 
 		"github.com/Zemanta/gracefulshutdown"
-		"github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal"
 		"github.com/Zemanta/gracefulshutdown/shutdownmanagers/awsmanager"
+		"github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal"
 	)
 
 	func main() {
 		// initialize gracefulshutdown with ping time
-		gs := gracefulshutdown.New(time.Minute * 15)
+		gs := gracefulshutdown.New()
 
 		// add posix shutdown manager
 		gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
 
 		// add aws shutdown manager
-		gs.AddShutdownManager(awsmanager.NewAwsManager(nil, "example-sqs-queue", "example-lifecycle-hook-name"))
+		gs.AddShutdownManager(awsmanager.NewAwsManager(
+			nil,
+			"example-sqs-queue",
+			"example-lifecycle-hook-name",
+			time.Minute*15,
+		))
 
 		// add your tasks that implement ShutdownCallback
 		gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
@@ -162,10 +167,10 @@ func (f ShutdownFunc) OnShutdown() error {
 }
 
 // ShutdownManager is an interface implemnted by ShutdownManagers.
-// ShutdownManagers start listening for shtudown requests in Start.
-// When they call StartShutdown on StartShutdownInterface, Ping gets
-// called periodically, and once all ShutdownCallbacks return,
-// ShutdownFinish is called.
+// ShutdownManagers start listening for shutdown requests in Start.
+// When they call StartShutdown on GSInterface,
+// first ShutdownStart() is called, then all ShutdownCallbacks are executed
+// and once all ShutdownCallbacks return, ShutdownFinish is called.
 type ShutdownManager interface {
 	Start(gs GSInterface) error
 	ShutdownStart() error
@@ -202,8 +207,7 @@ type GracefulShutdown struct {
 	errorHandler ErrorHandler
 }
 
-// New initializes GracefulShutdown. pingTime is the interval for calling
-// pings on ShutdownManager when shutdown has started.
+// New initializes GracefulShutdown.
 func New() *GracefulShutdown {
 	return &GracefulShutdown{
 		callbacks: make([]ShutdownCallback, 0, 10),
@@ -255,8 +259,9 @@ func (gs *GracefulShutdown) SetErrorHandler(errorHandler ErrorHandler) {
 }
 
 // StartShutdown is called from a ShutdownManager and will initiate shutdown:
-// start sending pings, call all ShutdownCallbacks, wait for callbacks
-// to finish and call ShutdownFinish on ShutdownManager
+// first call ShutdownStart on Shutdownmanager,
+// call all ShutdownCallbacks, wait for callbacks to finish and
+// call ShutdownFinish on ShutdownManager
 func (gs *GracefulShutdown) StartShutdown(sm ShutdownManager) {
 	gs.ReportError(sm.ShutdownStart())
 
