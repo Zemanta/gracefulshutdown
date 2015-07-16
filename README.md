@@ -8,6 +8,14 @@ Providing shutdown callbacks for graceful app shutdown
 go get github.com/Zemanta/gracefulshutdown
 ```
 
+## Documentation
+
+[GracefulShutdown](http://godoc.org/github.com/Zemanta/gracefulshutdown)
+
+ShutdownManagers:
+- [PosixSignalManager](http://godoc.org/github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal)
+- [AwsManager](http://godoc.org/github.com/Zemanta/gracefulshutdown/shutdownmanagers/awsmanager)
+
 ## Example - posix signals
 
 Graceful shutdown will listen for posix SIGINT and SIGTERM signals. When they are received it will run all callbacks in separate go routines. When callbacks return, the application will exit with os.Exit(0)
