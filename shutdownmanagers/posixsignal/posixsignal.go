@@ -13,6 +13,8 @@ import (
 	"github.com/Zemanta/gracefulshutdown"
 )
 
+const Name = "PosixSignalManager"
+
 // PosixSignalManager implements ShutdownManager interface that is added
 // to GracefulShutdown. Initialize with NewPosixSignalManager.
 type PosixSignalManager struct {
@@ -31,6 +33,11 @@ func NewPosixSignalManager(sig ...os.Signal) *PosixSignalManager {
 	return &PosixSignalManager{
 		signals: sig,
 	}
+}
+
+// GetName returns name of this ShutdownManager.
+func (posixSignalManager *PosixSignalManager) GetName() string {
+	return Name
 }
 
 // Start starts listening for posix signals.

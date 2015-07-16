@@ -31,7 +31,7 @@ When callbacks return, the application will exit with os.Exit(0)
 		gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
 
 		// add your tasks that implement ShutdownCallback
-		gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+		gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func(string) error {
 			fmt.Println("Shutdown callback start")
 			time.Sleep(time.Second)
 			fmt.Println("Shutdown callback finished")
@@ -77,7 +77,7 @@ error returned from ShutdownCallback.
 		}))
 
 		// add your tasks that implement ShutdownCallback
-		gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+		gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func(string) error {
 			fmt.Println("Shutdown callback start")
 			time.Sleep(time.Second)
 			fmt.Println("Shutdown callback finished")
@@ -102,6 +102,8 @@ it will run all callbacks in separate go routines.
 While callbacks are running it will call aws api
 RecordLifecycleActionHeartbeatInput autoscaler every 15 minutes.
 When callbacks return, the application will call aws api CompleteLifecycleAction.
+The callback will delay only if shutdown was initiated by awsmanager.
+
 	package main
 
 	import (
@@ -129,9 +131,11 @@ When callbacks return, the application will call aws api CompleteLifecycleAction
 		))
 
 		// add your tasks that implement ShutdownCallback
-		gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+		gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func(shutdownManager string) error {
 			fmt.Println("Shutdown callback start")
-			time.Sleep(time.Hour)
+			if shutdownManager == awsmanager.Name {
+				time.Sleep(time.Hour)
+			}
 			fmt.Println("Shutdown callback finished")
 			return nil
 		}))
@@ -145,6 +149,7 @@ When callbacks return, the application will call aws api CompleteLifecycleAction
 		// do other stuff
 		time.Sleep(time.Hour * 2)
 	}
+
 */
 package gracefulshutdown
 
@@ -153,25 +158,28 @@ import (
 )
 
 // ShutdownCallback is an interface you have to implement for callbacks.
-// OnShutdown will be called when shutdown is requested.
+// OnShutdown will be called when shutdown is requested. The parameter
+// is the name of the ShutdownManager that requested shutdown.
 type ShutdownCallback interface {
-	OnShutdown() error
+	OnShutdown(string) error
 }
 
 // ShutdownFunc is a helper type, so you can easily provide anonymous functions
 // as ShutdownCallbacks.
-type ShutdownFunc func() error
+type ShutdownFunc func(string) error
 
-func (f ShutdownFunc) OnShutdown() error {
-	return f()
+func (f ShutdownFunc) OnShutdown(shutdownManager string) error {
+	return f(shutdownManager)
 }
 
 // ShutdownManager is an interface implemnted by ShutdownManagers.
+// GetName returns the name of ShutdownManager.
 // ShutdownManagers start listening for shutdown requests in Start.
 // When they call StartShutdown on GSInterface,
 // first ShutdownStart() is called, then all ShutdownCallbacks are executed
 // and once all ShutdownCallbacks return, ShutdownFinish is called.
 type ShutdownManager interface {
+	GetName() string
 	Start(gs GSInterface) error
 	ShutdownStart() error
 	ShutdownFinish() error
@@ -271,7 +279,7 @@ func (gs *GracefulShutdown) StartShutdown(sm ShutdownManager) {
 		go func(shutdownCallback ShutdownCallback) {
 			defer wg.Done()
 
-			gs.ReportError(shutdownCallback.OnShutdown())
+			gs.ReportError(shutdownCallback.OnShutdown(sm.GetName()))
 		}(shutdownCallback)
 	}
 

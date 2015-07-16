@@ -8,6 +8,10 @@ import (
 
 type SMShutdownStartFunc func() error
 
+func (f SMShutdownStartFunc) GetName() string {
+	return "test-sm"
+}
+
 func (f SMShutdownStartFunc) ShutdownStart() error {
 	return f()
 }
@@ -22,6 +26,10 @@ func (f SMShutdownStartFunc) Start(gs GSInterface) error {
 
 type SMFinishFunc func() error
 
+func (f SMFinishFunc) GetName() string {
+	return "test-sm"
+}
+
 func (f SMFinishFunc) ShutdownStart() error {
 	return nil
 }
@@ -35,6 +43,10 @@ func (f SMFinishFunc) Start(gs GSInterface) error {
 }
 
 type SMStartFunc func() error
+
+func (f SMStartFunc) GetName() string {
+	return "test-sm"
+}
 
 func (f SMStartFunc) ShutdownStart() error {
 	return nil
@@ -53,7 +65,7 @@ func TestCallbacksGetCalled(t *testing.T) {
 
 	c := make(chan int, 100)
 	for i := 0; i < 15; i++ {
-		gs.AddShutdownCallback(ShutdownFunc(func() error {
+		gs.AddShutdownCallback(ShutdownFunc(func(string) error {
 			c <- 1
 			return nil
 		}))
@@ -103,7 +115,7 @@ func TestShutdownStartGetsCalled(t *testing.T) {
 	c := make(chan int, 100)
 	gs := New()
 
-	gs.AddShutdownCallback(ShutdownFunc(func() error {
+	gs.AddShutdownCallback(ShutdownFunc(func(string) error {
 		time.Sleep(5 * time.Millisecond)
 		return nil
 	}))
@@ -122,7 +134,7 @@ func TestShutdownFinishGetsCalled(t *testing.T) {
 	c := make(chan int, 100)
 	gs := New()
 
-	gs.AddShutdownCallback(ShutdownFunc(func() error {
+	gs.AddShutdownCallback(ShutdownFunc(func(string) error {
 		time.Sleep(5 * time.Millisecond)
 		return nil
 	}))
@@ -186,7 +198,7 @@ func TestErrorHandlerFromCallbacks(t *testing.T) {
 	}))
 
 	for i := 0; i < 15; i++ {
-		gs.AddShutdownCallback(ShutdownFunc(func() error {
+		gs.AddShutdownCallback(ShutdownFunc(func(string) error {
 			return errors.New("my-error")
 		}))
 	}
@@ -214,5 +226,25 @@ func TestErrorHandlerDirect(t *testing.T) {
 
 	if len(c) != 1 {
 		t.Error("Expected 1 error from ReportError call, got ", len(c))
+	}
+}
+
+func TestShutdownManagerName(t *testing.T) {
+	c := make(chan int, 100)
+	gs := New()
+
+	gs.AddShutdownCallback(ShutdownFunc(func(shutdownManager string) error {
+		if shutdownManager == "test-sm" {
+			c <- 1
+		}
+		return nil
+	}))
+
+	gs.StartShutdown(SMFinishFunc(func() error {
+		return nil
+	}))
+
+	if len(c) != 1 {
+		t.Error("Expected shutdownManager to be 'test-sm'.")
 	}
 }

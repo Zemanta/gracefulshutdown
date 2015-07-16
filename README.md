@@ -31,7 +31,7 @@ func main() {
 	gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
 
 	// add your tasks that implement ShutdownCallback
-	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func(string) error {
 		fmt.Println("Shutdown callback start")
 		time.Sleep(time.Second)
 		fmt.Println("Shutdown callback finished")
@@ -78,7 +78,7 @@ func main() {
 	}))
 
 	// add your tasks that implement ShutdownCallback
-	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func(string) error {
 		fmt.Println("Shutdown callback start")
 		time.Sleep(time.Second)
 		fmt.Println("Shutdown callback finished")
@@ -98,7 +98,7 @@ func main() {
 
 ## Example - aws
 
-Graceful shutdown will listen for SQS messages on "example-sqs-queue". When a termination message with current EC2 instance id is received it will run all callbacks in separate go routines. While callbacks are running it will call aws api RecordLifecycleActionHeartbeatInput autoscaler every 15 minutes. When callbacks return, the application will call aws api CompleteLifecycleAction.
+Graceful shutdown will listen for SQS messages on "example-sqs-queue". When a termination message with current EC2 instance id is received it will run all callbacks in separate go routines. While callbacks are running it will call aws api RecordLifecycleActionHeartbeatInput autoscaler every 15 minutes. When callbacks return, the application will call aws api CompleteLifecycleAction. The callback will delay only if shutdown was initiated by awsmanager.
 
 ```go
 package main
@@ -128,9 +128,11 @@ func main() {
 	))
 
 	// add your tasks that implement ShutdownCallback
-	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func() error {
+	gs.AddShutdownCallback(gracefulshutdown.ShutdownFunc(func(shutdownManager string) error {
 		fmt.Println("Shutdown callback start")
-		time.Sleep(time.Hour)
+		if shutdownManager == awsmanager.Name {
+			time.Sleep(time.Hour)
+		}
 		fmt.Println("Shutdown callback finished")
 		return nil
 	}))

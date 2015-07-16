@@ -21,6 +21,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
+const Name = "AwsManager"
+
 // AwsManager implements ShutdownManager interface that is added
 // to GracefulShutdown. Initialize with NewAwsManager.
 type AwsManager struct {
@@ -67,6 +69,11 @@ func NewAwsManager(credentials *credentials.Credentials, queueName string, lifec
 		credentials:       credentials,
 		pingTime:          pingTime,
 	}
+}
+
+// GetName returns name of this ShutdownManager.
+func (awsManager *AwsManager) GetName() string {
+	return Name
 }
 
 // Start starts listening to sqs queue for termination messages. Will return
