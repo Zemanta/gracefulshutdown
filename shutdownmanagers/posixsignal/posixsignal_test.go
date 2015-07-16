@@ -53,8 +53,6 @@ func TestStartShutdownCalledOnDefaultSignals(t *testing.T) {
 }
 
 func TestStartShutdownCalledCustomSignal(t *testing.T) {
-
-	t.Error("fail")
 	c := make(chan int, 100)
 
 	psm := NewPosixSignalManager(syscall.SIGHUP)
@@ -67,5 +65,4 @@ func TestStartShutdownCalledCustomSignal(t *testing.T) {
 	syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
 
 	waitSig(t, c)
-
 }
