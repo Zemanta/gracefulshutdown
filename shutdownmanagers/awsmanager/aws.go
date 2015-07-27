@@ -8,6 +8,7 @@ package awsmanager
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
@@ -29,6 +31,8 @@ type AwsManager struct {
 	ticker   *time.Ticker
 	gs       gracefulshutdown.GSInterface
 	pingTime time.Duration
+
+	port uint16
 
 	queueName         string
 	lifecycleHookName string
@@ -42,6 +46,7 @@ type AwsManager struct {
 	credentials *credentials.Credentials
 
 	autoScaling *autoscaling.AutoScaling
+	ec2         *ec2.EC2
 }
 
 type lifecycleHookMessage struct {
@@ -97,6 +102,7 @@ func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 		Credentials: awsManager.credentials,
 	}
 	awsManager.autoScaling = autoscaling.New(awsConfig)
+	awsManager.ec2 = ec2.New(awsConfig)
 	sqsInstance := sqs.New(awsConfig)
 
 	queueURLOutput, err := sqsInstance.GetQueueURL(&sqs.GetQueueURLInput{QueueName: &awsManager.queueName})
@@ -124,21 +130,65 @@ func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 			}
 
 			message := receiveMessageOutput.Messages[0]
+			awsManager.handleMessage(*message.Body)
 
-			if awsManager.isMyShutdownMessage(*message.Body) {
-				_, err = sqsInstance.DeleteMessage(&sqs.DeleteMessageInput{
-					QueueURL:      queueURL,
-					ReceiptHandle: message.ReceiptHandle,
-				})
-				gs.ReportError(err)
-
-				gs.StartShutdown(awsManager)
-				return
-			}
+			_, err = sqsInstance.DeleteMessage(&sqs.DeleteMessageInput{
+				QueueURL:      queueURL,
+				ReceiptHandle: message.ReceiptHandle,
+			})
+			gs.ReportError(err)
 		}
 	}()
 
 	return nil
+}
+
+func (awsManager *AwsManager) handleMessage(message string) {
+	hookMessage := &lifecycleHookMessage{}
+	err := json.NewDecoder(strings.NewReader(message)).Decode(hookMessage)
+	if err != nil {
+		// not json message
+		return
+	}
+
+	if awsManager.isMyShutdownMessage(hookMessage) {
+		awsManager.gs.StartShutdown(awsManager)
+	} else {
+		awsManager.forwardMessage(hookMessage, message)
+	}
+}
+
+func (awsManager *AwsManager) getTargetHost(instanceName string) (string, error) {
+	describeInstancesInput := &ec2.DescribeInstancesInput{
+		InstanceIDs: []*string{&instanceName},
+	}
+	describeInstancesOutput, err := awsManager.ec2.DescribeInstances(describeInstancesInput)
+	if err != nil {
+		return "", err
+	}
+
+	if len(describeInstancesOutput.Reservations) != 1 {
+		return "", fmt.Errorf("Wrong number of reservations: %d", len(describeInstancesOutput.Reservations))
+	}
+
+	reservation := describeInstancesOutput.Reservations[0]
+	if len(reservation.Instances) != 1 {
+		return "", fmt.Errorf("Wrong number of instances: %d", len(reservation.Instances))
+	}
+
+	instance := reservation.Instances[0]
+	return *instance.PrivateIPAddress, nil
+}
+
+func (awsManager *AwsManager) forwardMessage(hookMessage *lifecycleHookMessage, message string) {
+	host, err := awsManager.getTargetHost(hookMessage.EC2InstanceId)
+	if err != nil {
+		awsManager.gs.ReportError(err)
+		return
+	}
+
+	_, err = http.Post(fmt.Sprintf("http://%s:%d/", host, awsManager.port), "application/json", strings.NewReader(message))
+	awsManager.gs.ReportError(err)
 }
 
 func (awsManager *AwsManager) getMetadata(resId string) (string, error) {
@@ -161,14 +211,7 @@ func (awsManager *AwsManager) getMetadata(resId string) (string, error) {
 	return string(data), nil
 }
 
-func (awsManager *AwsManager) isMyShutdownMessage(message string) bool {
-	hookMessage := &lifecycleHookMessage{}
-	err := json.NewDecoder(strings.NewReader(message)).Decode(hookMessage)
-	if err != nil {
-		// not json message
-		return false
-	}
-
+func (awsManager *AwsManager) isMyShutdownMessage(hookMessage *lifecycleHookMessage) bool {
 	if hookMessage.LifecycleHookName != awsManager.lifecycleHookName {
 		// not our hook
 		return false
