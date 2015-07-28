@@ -222,10 +222,12 @@ func (awsManager *AwsManager) handleMessage(message string) bool {
 		awsManager.autoscalingGroupName = hookMessage.AutoScalingGroupName
 
 		go awsManager.gs.StartShutdown(awsManager)
+		return true
 	} else if awsManager.config.Port != 0 {
 		awsManager.forwardMessage(hookMessage, message)
+		return true
 	}
-	return true
+	return false
 }
 
 func (awsManager *AwsManager) getTargetHost(instanceName string) (string, error) {
