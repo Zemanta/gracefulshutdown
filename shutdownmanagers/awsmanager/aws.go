@@ -23,30 +23,24 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
-const Name = "AwsManager"
+const (
+	Name            = "AwsManager"
+	defaultPingTime = time.Minute * 15
+)
 
 // AwsManager implements ShutdownManager interface that is added
 // to GracefulShutdown. Initialize with NewAwsManager.
 type AwsManager struct {
-	ticker   *time.Ticker
-	gs       gracefulshutdown.GSInterface
-	pingTime time.Duration
-
-	port uint16
-
-	queueName         string
-	lifecycleHookName string
+	ticker *time.Ticker
+	gs     gracefulshutdown.GSInterface
+	config *AwsManagerConfig
 
 	lifecycleActionToken string
 	autoscalingGroupName string
 
-	instanceId string
-	region     string
-
-	credentials *credentials.Credentials
-
 	autoScaling *autoscaling.AutoScaling
 	ec2         *ec2.EC2
+	sqs         *sqs.SQS
 }
 
 type lifecycleHookMessage struct {
@@ -61,18 +55,35 @@ type lifecycleHookMessage struct {
 	LifecycleHookName    string `json:"LifecycleHookName"`
 }
 
+type AwsManagerConfig struct {
+	Credentials       *credentials.Credentials
+	SqsQueueName      string
+	LifecycleHookName string
+	PingTime          time.Duration
+	Port              uint16
+	Region            string
+	InstanceId        string
+}
+
+func (amc *AwsManagerConfig) clean() {
+	if amc.PingTime == 0 {
+		amc.PingTime = defaultPingTime
+	}
+}
+
 // NewAwsManager initializes the AwsManager. credentials can be nil if
 // credentials are set in ~/.aws/credntials, otherwise see aws-sdk-go
 // documentation. queueName is name of the SQS queue where instance terminating
 // message will be received. lifecycleHookName is name of lifecycleHook
 // that we will listen for. pingTime is a period for sending
 // RecordLifecycleActionHeartbeats.
-func NewAwsManager(credentials *credentials.Credentials, queueName string, lifecycleHookName string, pingTime time.Duration) *AwsManager {
+func NewAwsManager(awsManagerConfig *AwsManagerConfig) *AwsManager {
+	if awsManagerConfig == nil {
+		awsManagerConfig = &AwsManagerConfig{}
+	}
+	awsManagerConfig.clean()
 	return &AwsManager{
-		queueName:         queueName,
-		lifecycleHookName: lifecycleHookName,
-		credentials:       credentials,
-		pingTime:          pingTime,
+		config: awsManagerConfig,
 	}
 }
 
@@ -86,26 +97,70 @@ func (awsManager *AwsManager) GetName() string {
 func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 	awsManager.gs = gs
 
-	availabilityZone, err := awsManager.getMetadata("placement/availability-zone")
-	if err != nil {
-		return err
+	if awsManager.config.Region == "" {
+		availabilityZone, err := awsManager.getMetadata("placement/availability-zone")
+		if err != nil {
+			return err
+		}
+		awsManager.config.Region = availabilityZone[:len(availabilityZone)-1]
 	}
-	awsManager.region = availabilityZone[:len(availabilityZone)-1]
 
-	awsManager.instanceId, err = awsManager.getMetadata("instance-id")
-	if err != nil {
-		return err
+	if awsManager.config.InstanceId == "" {
+		instanceId, err := awsManager.getMetadata("instance-id")
+		if err != nil {
+			return err
+		}
+		awsManager.config.InstanceId = instanceId
 	}
 
 	awsConfig := &aws.Config{
-		Region:      awsManager.region,
-		Credentials: awsManager.credentials,
+		Region:      awsManager.config.Region,
+		Credentials: awsManager.config.Credentials,
 	}
 	awsManager.autoScaling = autoscaling.New(awsConfig)
 	awsManager.ec2 = ec2.New(awsConfig)
-	sqsInstance := sqs.New(awsConfig)
+	awsManager.sqs = sqs.New(awsConfig)
 
-	queueURLOutput, err := sqsInstance.GetQueueURL(&sqs.GetQueueURLInput{QueueName: &awsManager.queueName})
+	if awsManager.config.SqsQueueName != "" {
+		if err := awsManager.listenSQS(); err != nil {
+			return err
+		}
+	}
+
+	if awsManager.config.Port != 0 {
+		if err := awsManager.listenHTTP(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (awsManager *AwsManager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	bs, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	message := string(bs)
+	if awsManager.handleMessage(message) {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+}
+
+func (awsManager *AwsManager) listenHTTP() error {
+	http.Handle("/", awsManager)
+	go http.ListenAndServe(fmt.Sprintf(":%d", awsManager.config.Port), nil)
+	return nil
+}
+
+func (awsManager *AwsManager) listenSQS() error {
+	queueURLOutput, err := awsManager.sqs.GetQueueURL(&sqs.GetQueueURLInput{
+		QueueName: &awsManager.config.SqsQueueName,
+	})
 	if err != nil {
 		return err
 	}
@@ -121,8 +176,8 @@ func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 		}
 
 		for {
-			receiveMessageOutput, err := sqsInstance.ReceiveMessage(receiveMessageInput)
-			gs.ReportError(err)
+			receiveMessageOutput, err := awsManager.sqs.ReceiveMessage(receiveMessageInput)
+			awsManager.gs.ReportError(err)
 
 			if len(receiveMessageOutput.Messages) < 1 {
 				// no messages received
@@ -130,32 +185,47 @@ func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 			}
 
 			message := receiveMessageOutput.Messages[0]
-			awsManager.handleMessage(*message.Body)
 
-			_, err = sqsInstance.DeleteMessage(&sqs.DeleteMessageInput{
-				QueueURL:      queueURL,
-				ReceiptHandle: message.ReceiptHandle,
-			})
-			gs.ReportError(err)
+			if awsManager.handleMessage(*message.Body) {
+				_, err = awsManager.sqs.DeleteMessage(&sqs.DeleteMessageInput{
+					QueueURL:      queueURL,
+					ReceiptHandle: message.ReceiptHandle,
+				})
+				awsManager.gs.ReportError(err)
+			}
 		}
 	}()
 
 	return nil
 }
 
-func (awsManager *AwsManager) handleMessage(message string) {
+func (awsManager *AwsManager) handleMessage(message string) bool {
 	hookMessage := &lifecycleHookMessage{}
 	err := json.NewDecoder(strings.NewReader(message)).Decode(hookMessage)
 	if err != nil {
 		// not json message
-		return
+		return false
 	}
 
-	if awsManager.isMyShutdownMessage(hookMessage) {
-		awsManager.gs.StartShutdown(awsManager)
-	} else {
+	if hookMessage.LifecycleHookName != awsManager.config.LifecycleHookName {
+		// not our hook
+		return false
+	}
+
+	if hookMessage.LifecycleTransition != "autoscaling:EC2_INSTANCE_TERMINATING" {
+		// not terminating
+		return false
+	}
+
+	if hookMessage.EC2InstanceId == awsManager.config.InstanceId {
+		awsManager.lifecycleActionToken = hookMessage.LifecycleActionToken
+		awsManager.autoscalingGroupName = hookMessage.AutoScalingGroupName
+
+		go awsManager.gs.StartShutdown(awsManager)
+	} else if awsManager.config.Port != 0 {
 		awsManager.forwardMessage(hookMessage, message)
 	}
+	return true
 }
 
 func (awsManager *AwsManager) getTargetHost(instanceName string) (string, error) {
@@ -177,6 +247,9 @@ func (awsManager *AwsManager) getTargetHost(instanceName string) (string, error)
 	}
 
 	instance := reservation.Instances[0]
+	if instance.PrivateIPAddress == nil {
+		return "", fmt.Errorf("Instance private ip is nil.")
+	}
 	return *instance.PrivateIPAddress, nil
 }
 
@@ -187,7 +260,7 @@ func (awsManager *AwsManager) forwardMessage(hookMessage *lifecycleHookMessage, 
 		return
 	}
 
-	_, err = http.Post(fmt.Sprintf("http://%s:%d/", host, awsManager.port), "application/json", strings.NewReader(message))
+	_, err = http.Post(fmt.Sprintf("http://%s:%d/", host, awsManager.config.Port), "application/json", strings.NewReader(message))
 	awsManager.gs.ReportError(err)
 }
 
@@ -211,26 +284,9 @@ func (awsManager *AwsManager) getMetadata(resId string) (string, error) {
 	return string(data), nil
 }
 
-func (awsManager *AwsManager) isMyShutdownMessage(hookMessage *lifecycleHookMessage) bool {
-	if hookMessage.LifecycleHookName != awsManager.lifecycleHookName {
-		// not our hook
-		return false
-	}
-
-	if hookMessage.EC2InstanceId != awsManager.instanceId {
-		// not our instance
-		return false
-	}
-
-	awsManager.lifecycleActionToken = hookMessage.LifecycleActionToken
-	awsManager.autoscalingGroupName = hookMessage.AutoScalingGroupName
-
-	return true
-}
-
 // ShutdownStart calls Ping every pingTime
 func (awsManager *AwsManager) ShutdownStart() error {
-	awsManager.ticker = time.NewTicker(awsManager.pingTime)
+	awsManager.ticker = time.NewTicker(awsManager.config.PingTime)
 	go func() {
 		for {
 			awsManager.gs.ReportError(awsManager.Ping())
@@ -246,7 +302,7 @@ func (awsManager *AwsManager) Ping() error {
 	heartbeatInput := &autoscaling.RecordLifecycleActionHeartbeatInput{
 		AutoScalingGroupName: &awsManager.autoscalingGroupName,
 		LifecycleActionToken: &awsManager.lifecycleActionToken,
-		LifecycleHookName:    &awsManager.lifecycleHookName,
+		LifecycleHookName:    &awsManager.config.LifecycleHookName,
 	}
 
 	_, err := awsManager.autoScaling.RecordLifecycleActionHeartbeat(heartbeatInput)
@@ -264,7 +320,7 @@ func (awsManager *AwsManager) ShutdownFinish() error {
 		AutoScalingGroupName:  &awsManager.autoscalingGroupName,
 		LifecycleActionResult: &actionResult,
 		LifecycleActionToken:  &awsManager.lifecycleActionToken,
-		LifecycleHookName:     &awsManager.lifecycleHookName,
+		LifecycleHookName:     &awsManager.config.LifecycleHookName,
 	}
 
 	_, err := awsManager.autoScaling.CompleteLifecycleAction(actionInput)
