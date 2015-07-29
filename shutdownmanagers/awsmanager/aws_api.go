@@ -25,7 +25,7 @@ type awsApi struct {
 
 func (api *awsApi) Init(config *AwsManagerConfig) error {
 	awsConfig := &aws.Config{
-		Region:      config.Region,
+		Region:      &config.Region,
 		Credentials: config.Credentials,
 	}
 	api.autoScaling = autoscaling.New(awsConfig)
