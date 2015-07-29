@@ -193,21 +193,23 @@ func (awsManager *AwsManager) handleMessage(message string) bool {
 		go awsManager.gs.StartShutdown(awsManager)
 		return true
 	} else if awsManager.config.Port != 0 {
-		awsManager.forwardMessage(hookMessage, message)
+		if err := awsManager.forwardMessage(hookMessage, message); err != nil {
+			awsManager.gs.ReportError(err)
+			return false
+		}
 		return true
 	}
 	return false
 }
 
-func (awsManager *AwsManager) forwardMessage(hookMessage *lifecycleHookMessage, message string) {
+func (awsManager *AwsManager) forwardMessage(hookMessage *lifecycleHookMessage, message string) error {
 	host, err := awsManager.api.GetHost(hookMessage.EC2InstanceId)
 	if err != nil {
-		awsManager.gs.ReportError(err)
-		return
+		return err
 	}
 
 	_, err = http.Post(fmt.Sprintf("http://%s:%d/", host, awsManager.config.Port), "application/json", strings.NewReader(message))
-	awsManager.gs.ReportError(err)
+	return err
 }
 
 // ShutdownStart calls Ping every pingTime
