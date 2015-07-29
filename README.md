@@ -1,4 +1,4 @@
-# gracefulshutdown
+# gracefulshutdown [![Build Status](https://travis-ci.org/Zemanta/gracefulshutdown.svg)](https://travis-ci.org/Zemanta/gracefulshutdown)
 
 Providing shutdown callbacks for graceful app shutdown
 
