@@ -149,8 +149,7 @@ func (awsManager *AwsManager) ServeHTTP(w http.ResponseWriter, req *http.Request
 }
 
 func (awsManager *AwsManager) listenHTTP() {
-	http.Handle("/", awsManager)
-	http.ListenAndServe(fmt.Sprintf(":%d", awsManager.config.Port), nil)
+	http.ListenAndServe(fmt.Sprintf(":%d", awsManager.config.Port), awsManager)
 }
 
 func (awsManager *AwsManager) listenSQS() {
