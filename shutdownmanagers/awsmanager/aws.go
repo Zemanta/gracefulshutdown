@@ -1,8 +1,9 @@
 /*
 AwsManager provides a listener for a message on SQS queue from the
-Autoscaler requesting instance termination. It handles sending periodic
-calls to RecordLifecycleActionHeartbeat and after all callbacks finish
-a call to CompleteLifecycleAction.
+Autoscaler requesting instance termination. If http port is specified,
+it can forward received message to correct instance via http.
+It handles sending periodic calls to RecordLifecycleActionHeartbeat
+and after all callbacks finish a call to CompleteLifecycleAction.
 */
 package awsmanager
 
@@ -49,14 +50,31 @@ type lifecycleHookMessage struct {
 	LifecycleHookName    string `json:"LifecycleHookName"`
 }
 
+// AwsManagerConfig provides configuration options for AwsManager.
 type AwsManagerConfig struct {
-	Credentials       *credentials.Credentials
-	SqsQueueName      string
+	// Credentials can be nil if credentials are set in ~/.aws/credntials,
+	// otherwise see aws-sdk-go documentation.
+	Credentials *credentials.Credentials
+
+	// Name of sqs queue to listen for terminating message. Can be empty
+	// to disable listening to sqs.
+	SqsQueueName string
+
+	// LifecycleHookName is name of the lifecycleHook that will be listened for.
 	LifecycleHookName string
-	PingTime          time.Duration
-	Port              uint16
-	Region            string
-	InstanceId        string
+
+	// PingTime is period for sending RecordLifecycleActionHeartbeats.
+	// Default is 15 minutes.
+	PingTime time.Duration
+
+	// Port on which to listen for terminating messages over http.
+	// If 0, http is disabled.
+	Port uint16
+
+	// Region and InstanceId are optional. If empty they get collected from
+	// EC2 instance metadata.
+	Region     string
+	InstanceId string
 }
 
 type awsApiInterface interface {
@@ -75,12 +93,8 @@ func (amc *AwsManagerConfig) clean() {
 	}
 }
 
-// NewAwsManager initializes the AwsManager. credentials can be nil if
-// credentials are set in ~/.aws/credntials, otherwise see aws-sdk-go
-// documentation. queueName is name of the SQS queue where instance terminating
-// message will be received. lifecycleHookName is name of lifecycleHook
-// that we will listen for. pingTime is a period for sending
-// RecordLifecycleActionHeartbeats.
+// NewAwsManager initializes the AwsManager. See AwsManagerConfig for
+// configuration options.
 func NewAwsManager(awsManagerConfig *AwsManagerConfig) *AwsManager {
 	if awsManagerConfig == nil {
 		awsManagerConfig = &AwsManagerConfig{}
@@ -97,8 +111,9 @@ func (awsManager *AwsManager) GetName() string {
 	return Name
 }
 
-// Start starts listening to sqs queue for termination messages. Will return
-// error if aws metadata is not available or if invalid sqs queueName is given.
+// Start starts listening to sqs queue and http for termination messages.
+// Will return error if aws metadata is not available
+// or if invalid sqs queueName is given.
 func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 	awsManager.gs = gs
 
@@ -133,6 +148,7 @@ func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 	return nil
 }
 
+// ServeHTTP is used for receiving messages over http.
 func (awsManager *AwsManager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	bs, err := ioutil.ReadAll(req.Body)
 	if err != nil {
@@ -211,7 +227,7 @@ func (awsManager *AwsManager) forwardMessage(hookMessage *lifecycleHookMessage, 
 	return err
 }
 
-// ShutdownStart calls Ping every pingTime
+// ShutdownStart starts sending LifecycleActionHeartbeat every PingTime.
 func (awsManager *AwsManager) ShutdownStart() error {
 	awsManager.ticker = time.NewTicker(awsManager.config.PingTime)
 	go func() {
@@ -226,7 +242,7 @@ func (awsManager *AwsManager) ShutdownStart() error {
 	return nil
 }
 
-// ShutdownFinish first stops the ticker for calling Ping,
+// ShutdownFinish first stops the ticker for sending heartbeats,
 // then calls aws api CompleteLifecycleAction.
 func (awsManager *AwsManager) ShutdownFinish() error {
 	awsManager.ticker.Stop()
