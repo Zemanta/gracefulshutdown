@@ -34,19 +34,22 @@ func (api *awsApi) Init(config *AwsManagerConfig) error {
 
 	api.config = config
 
-	queueUrl, err := api.getQueueURL(config.SqsQueueName)
-	if err != nil {
-		return err
-	}
-	api.queueUrl = queueUrl
+	if config.SqsQueueName != "" {
+		queueUrl, err := api.getQueueURL(config.SqsQueueName)
+		if err != nil {
+			return err
+		}
+		api.queueUrl = queueUrl
 
-	var maxNumberOfMessages int64 = 1
-	var waitTimeSeconds int64 = 20
-	api.receiveMessageInput = &sqs.ReceiveMessageInput{
-		MaxNumberOfMessages: &maxNumberOfMessages,
-		QueueURL:            &api.queueUrl,
-		WaitTimeSeconds:     &waitTimeSeconds,
+		var maxNumberOfMessages int64 = 1
+		var waitTimeSeconds int64 = 20
+		api.receiveMessageInput = &sqs.ReceiveMessageInput{
+			MaxNumberOfMessages: &maxNumberOfMessages,
+			QueueURL:            &api.queueUrl,
+			WaitTimeSeconds:     &waitTimeSeconds,
+		}
 	}
+
 	return nil
 }
 
