@@ -4,3 +4,7 @@ go:
     - 1.3
     - 1.4
     - tip
+
+branches:
+  except:
+    - fea_vendor
