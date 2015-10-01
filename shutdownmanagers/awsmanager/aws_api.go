@@ -45,7 +45,7 @@ func (api *awsApi) Init(config *AwsManagerConfig) error {
 		var waitTimeSeconds int64 = 20
 		api.receiveMessageInput = &sqs.ReceiveMessageInput{
 			MaxNumberOfMessages: &maxNumberOfMessages,
-			QueueURL:            &api.queueUrl,
+			QueueUrl:            &api.queueUrl,
 			WaitTimeSeconds:     &waitTimeSeconds,
 		}
 	}
@@ -54,13 +54,13 @@ func (api *awsApi) Init(config *AwsManagerConfig) error {
 }
 
 func (api *awsApi) getQueueURL(name string) (string, error) {
-	queueURLOutput, err := api.sqs.GetQueueURL(&sqs.GetQueueURLInput{
+	queueURLOutput, err := api.sqs.GetQueueUrl(&sqs.GetQueueUrlInput{
 		QueueName: &name,
 	})
 	if err != nil {
 		return "", err
 	}
-	return *queueURLOutput.QueueURL, nil
+	return *queueURLOutput.QueueUrl, nil
 }
 
 func (api *awsApi) ReceiveMessage() (*sqs.Message, error) {
@@ -78,7 +78,7 @@ func (api *awsApi) ReceiveMessage() (*sqs.Message, error) {
 
 func (api *awsApi) DeleteMessage(message *sqs.Message) error {
 	_, err := api.sqs.DeleteMessage(&sqs.DeleteMessageInput{
-		QueueURL:      &api.queueUrl,
+		QueueUrl:      &api.queueUrl,
 		ReceiptHandle: message.ReceiptHandle,
 	})
 	return err
@@ -86,7 +86,7 @@ func (api *awsApi) DeleteMessage(message *sqs.Message) error {
 
 func (api *awsApi) GetHost(instanceName string) (string, error) {
 	describeInstancesInput := &ec2.DescribeInstancesInput{
-		InstanceIDs: []*string{&instanceName},
+		InstanceIds: []*string{&instanceName},
 	}
 	describeInstancesOutput, err := api.ec2.DescribeInstances(describeInstancesInput)
 	if err != nil {
@@ -103,10 +103,10 @@ func (api *awsApi) GetHost(instanceName string) (string, error) {
 	}
 
 	instance := reservation.Instances[0]
-	if instance.PrivateIPAddress == nil {
+	if instance.PrivateIpAddress == nil {
 		return "", fmt.Errorf("Instance private ip is nil.")
 	}
-	return *instance.PrivateIPAddress, nil
+	return *instance.PrivateIpAddress, nil
 }
 
 func (api *awsApi) GetMetadata(resId string) (string, error) {

@@ -209,6 +209,7 @@ func (f ErrorFunc) OnError(err error) {
 type GSInterface interface {
 	StartShutdown(sm ShutdownManager)
 	ReportError(err error)
+	AddShutdownCallback(shutdownCallback ShutdownCallback)
 }
 
 // GracefulShutdown is main struct that handles ShutdownCallbacks and

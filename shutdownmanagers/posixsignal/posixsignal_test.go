@@ -18,6 +18,10 @@ func (f startShutdownFunc) ReportError(err error) {
 
 }
 
+func (f startShutdownFunc) AddShutdownCallback(shutdownCallback gracefulshutdown.ShutdownCallback) {
+
+}
+
 func waitSig(t *testing.T, c <-chan int) {
 	select {
 	case <-c:

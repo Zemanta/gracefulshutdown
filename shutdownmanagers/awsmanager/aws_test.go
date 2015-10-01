@@ -23,6 +23,10 @@ func (f GSFunc) ReportError(err error) {
 
 }
 
+func (f GSFunc) AddShutdownCallback(shutdownCallback gracefulshutdown.ShutdownCallback) {
+
+}
+
 type awsApiMock struct {
 	heartbeatChannel chan int
 	completeChannel  chan int
@@ -98,8 +102,10 @@ func TestStart(t *testing.T) {
 	awsManager := NewAwsManager(&AwsManagerConfig{})
 	mock := newAwsApiMock()
 	awsManager.api = mock
+	gs := GSFunc(func(sm gracefulshutdown.ShutdownManager) {
+	})
 
-	if err := awsManager.Start(nil); err != nil {
+	if err := awsManager.Start(gs); err != nil {
 		t.Error("Error in start:", err)
 	}
 
