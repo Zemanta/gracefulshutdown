@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -29,10 +30,11 @@ const (
 // AwsManager implements ShutdownManager interface that is added
 // to GracefulShutdown. Initialize with NewAwsManager.
 type AwsManager struct {
-	ticker *time.Ticker
-	gs     gracefulshutdown.GSInterface
-	config *AwsManagerConfig
-	api    awsApiInterface
+	ticker   *time.Ticker
+	gs       gracefulshutdown.GSInterface
+	config   *AwsManagerConfig
+	api      awsApiInterface
+	listener net.Listener
 
 	lifecycleActionToken string
 	autoscalingGroupName string
@@ -137,14 +139,24 @@ func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 		return err
 	}
 
+	if awsManager.config.Port != 0 {
+		if err := awsManager.listenHTTP(); err != nil {
+			return err
+		}
+	}
+
+	awsManager.gs.AddShutdownCallback(awsManager)
+
 	if awsManager.config.SqsQueueName != "" {
 		go awsManager.listenSQS()
 	}
 
-	if awsManager.config.Port != 0 {
-		go awsManager.listenHTTP()
-	}
+	return nil
+}
 
+// OnShutdown closes http server on shutdown
+func (awsManager *AwsManager) OnShutdown(shutdownManager string) error {
+	awsManager.listener.Close()
 	return nil
 }
 
@@ -164,8 +176,16 @@ func (awsManager *AwsManager) ServeHTTP(w http.ResponseWriter, req *http.Request
 	}
 }
 
-func (awsManager *AwsManager) listenHTTP() {
-	http.ListenAndServe(fmt.Sprintf(":%d", awsManager.config.Port), awsManager)
+func (awsManager *AwsManager) listenHTTP() error {
+	var err error
+	awsManager.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", awsManager.config.Port))
+	if err != nil {
+		return err
+	}
+
+	go http.Serve(awsManager.listener, awsManager)
+
+	return nil
 }
 
 func (awsManager *AwsManager) listenSQS() {
