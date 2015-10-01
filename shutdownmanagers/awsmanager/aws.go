@@ -29,7 +29,7 @@ const (
 	defaultPingTime       = time.Minute * 15
 	defaultBackOff        = 500.0
 	defaultForwardRetries = 10
-	defaultServeRetries   = 3
+	defaultServeRetries   = 20
 )
 
 // AwsManager implements ShutdownManager interface that is added
@@ -168,16 +168,14 @@ func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 		return err
 	}
 
-	if awsManager.config.Port != 0 {
-		if err := awsManager.listenHTTP(); err != nil {
-			return err
-		}
-	}
-
 	awsManager.gs.AddShutdownCallback(awsManager)
 
 	if awsManager.config.SqsQueueName != "" {
 		go awsManager.listenSQS()
+	}
+
+	if awsManager.config.Port != 0 {
+		go awsManager.listenHTTP()
 	}
 
 	return nil
@@ -185,7 +183,9 @@ func (awsManager *AwsManager) Start(gs gracefulshutdown.GSInterface) error {
 
 // OnShutdown closes http server on shutdown
 func (awsManager *AwsManager) OnShutdown(shutdownManager string) error {
-	awsManager.listener.Close()
+	if awsManager.listener != nil {
+		awsManager.listener.Close()
+	}
 	return nil
 }
 
@@ -205,7 +205,7 @@ func (awsManager *AwsManager) ServeHTTP(w http.ResponseWriter, req *http.Request
 	}
 }
 
-func (awsManager *AwsManager) listenHTTP() error {
+func (awsManager *AwsManager) listenHTTP() {
 	var err error
 
 	for i := 0; i < awsManager.config.NumServeRetries+1; i++ {
@@ -217,12 +217,11 @@ func (awsManager *AwsManager) listenHTTP() error {
 		time.Sleep(awsManager.backOffDuration(i))
 	}
 	if err != nil {
-		return err
+		awsManager.gs.ReportError(err)
+		return
 	}
 
-	go http.Serve(awsManager.listener, awsManager)
-
-	return nil
+	http.Serve(awsManager.listener, awsManager)
 }
 
 func (awsManager *AwsManager) listenSQS() {
