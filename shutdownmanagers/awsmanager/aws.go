@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"strings"
@@ -23,8 +24,12 @@ import (
 )
 
 const (
-	Name            = "AwsManager"
-	defaultPingTime = time.Minute * 15
+	Name = "AwsManager"
+
+	defaultPingTime       = time.Minute * 15
+	defaultBackOff        = 500.0
+	defaultForwardRetries = 10
+	defaultServeRetries   = 3
 )
 
 // AwsManager implements ShutdownManager interface that is added
@@ -73,6 +78,17 @@ type AwsManagerConfig struct {
 	// If 0, http is disabled.
 	Port uint16
 
+	// BackOff is time for backup when retrying http listener and http forward
+	BackOff float64
+
+	// NumServeRetries is number of retries for http listener
+	// -1 for no retries, 0 is default value
+	NumServeRetries int
+
+	// NumForwardRetries is number of retries for http forward
+	// -1 for no retries, 0 is default value
+	NumForwardRetries int
+
 	// Region and InstanceId are optional. If empty they get collected from
 	// EC2 instance metadata.
 	Region     string
@@ -92,6 +108,19 @@ type awsApiInterface interface {
 func (amc *AwsManagerConfig) clean() {
 	if amc.PingTime == 0 {
 		amc.PingTime = defaultPingTime
+	}
+	if amc.BackOff == 0 {
+		amc.BackOff = defaultBackOff
+	}
+	if amc.NumServeRetries == 0 {
+		amc.NumServeRetries = defaultServeRetries
+	} else if amc.NumServeRetries < 0 {
+		amc.NumServeRetries = 0
+	}
+	if amc.NumForwardRetries == 0 {
+		amc.NumForwardRetries = defaultForwardRetries
+	} else if amc.NumForwardRetries < 0 {
+		amc.NumForwardRetries = 0
 	}
 }
 
@@ -178,7 +207,15 @@ func (awsManager *AwsManager) ServeHTTP(w http.ResponseWriter, req *http.Request
 
 func (awsManager *AwsManager) listenHTTP() error {
 	var err error
-	awsManager.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", awsManager.config.Port))
+
+	for i := 0; i < awsManager.config.NumServeRetries+1; i++ {
+		awsManager.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", awsManager.config.Port))
+		if err == nil {
+			break
+		}
+
+		time.Sleep(awsManager.backOffDuration(i))
+	}
 	if err != nil {
 		return err
 	}
@@ -230,7 +267,6 @@ func (awsManager *AwsManager) handleMessage(message string) bool {
 	} else if awsManager.config.Port != 0 {
 		if err := awsManager.forwardMessage(hookMessage, message); err != nil {
 			awsManager.gs.ReportError(err)
-			return false
 		}
 		return true
 	}
@@ -243,8 +279,21 @@ func (awsManager *AwsManager) forwardMessage(hookMessage *lifecycleHookMessage, 
 		return err
 	}
 
-	_, err = http.Post(fmt.Sprintf("http://%s:%d/", host, awsManager.config.Port), "application/json", strings.NewReader(message))
+	for i := 0; i < awsManager.config.NumForwardRetries+1; i++ {
+		_, err = http.Post(fmt.Sprintf("http://%s:%d/", host, awsManager.config.Port), "application/json", strings.NewReader(message))
+		if err == nil {
+			break
+		}
+
+		time.Sleep(awsManager.backOffDuration(i))
+	}
 	return err
+}
+
+func (awsManager *AwsManager) backOffDuration(i int) time.Duration {
+	rand := rand.Float64() + 0.5
+	try := float64(i + 1)
+	return time.Duration(awsManager.config.BackOff*try*rand) * time.Millisecond
 }
 
 // ShutdownStart starts sending LifecycleActionHeartbeat every PingTime.
