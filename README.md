@@ -14,7 +14,7 @@ go get github.com/Zemanta/gracefulshutdown
 
 ## Documentation
 
-[GracefulShutdown](http://godoc.org/github.com/Zemanta/gracefulshutdown)
+[GracefulShutdown](http://godoc.org/github.com/Zemanta/gracefulshutdown) is documented on godoc.
 
 ShutdownManagers:
 - [PosixSignalManager](http://godoc.org/github.com/Zemanta/gracefulshutdown/shutdownmanagers/posixsignal)
@@ -166,3 +166,6 @@ func main() {
 }
 ```
 
+## Licence 
+
+See LICENCE file in the root of the repository.
