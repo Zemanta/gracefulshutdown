@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -24,13 +25,13 @@ type awsApi struct {
 }
 
 func (api *awsApi) Init(config *AwsManagerConfig) error {
-	awsConfig := &aws.Config{
+	awsSession := session.New(&aws.Config{
 		Region:      &config.Region,
 		Credentials: config.Credentials,
-	}
-	api.autoScaling = autoscaling.New(awsConfig)
-	api.ec2 = ec2.New(awsConfig)
-	api.sqs = sqs.New(awsConfig)
+	})
+	api.autoScaling = autoscaling.New(awsSession)
+	api.ec2 = ec2.New(awsSession)
+	api.sqs = sqs.New(awsSession)
 
 	api.config = config
 
